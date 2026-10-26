@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Квантовая ферма</title>
+    <!-- Подключаем VK Bridge -->
+    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+        body { font-family: 'Segoe UI', Roboto, Arial, sans-serif; background: radial-gradient(circle at 50% 30%, #1a1a2e, #0f0f1a); color: #e0e0ff; min-height: 100vh; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+
+        .stars { position: fixed; inset: 0; pointer-events: none; z-index: 0; background-image: radial-gradient(2px 2px at 20% 30%, rgba(255,255,255,0.5), transparent), radial-gradient(1px 1px at 40% 70%, rgba(255,255,255,0.3), transparent), radial-gradient(1.5px 1.5px at 60% 20%, rgba(255,255,255,0.4), transparent), radial-gradient(1px 1px at 80% 50%, rgba(255,255,255,0.25), transparent), radial-gradient(2px 2px at 10% 80%, rgba(255,255,255,0.35), transparent), radial-gradient(1px 1px at 90% 85%, rgba(255,255,255,0.2), transparent); background-size: 200% 200%; animation: starDrift 60s linear infinite; }
+        @keyframes starDrift { 0% { background-position: 0% 0%; } 100% { background-position: 100% 100%; } }
+
+        #game { position: relative; z-index: 1; width: 100%; max-width: 520px; height: 100vh; max-height: 900px; padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; overflow-x: hidden; }
+
+        .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .score-box { background: rgba(255,255,255,0.05); border: 1px solid rgba(120,200,255,0.2); border-radius: 12px; padding: 10px 16px; flex: 1; min-width: 140px; }
+        .score-box .label { font-size: 11px; opacity: 0.6; text-transform: uppercase; letter-spacing: 1px; }
+        .score-box .value { font-size: 22px; font-weight: 700; color: #7ec8ff; font-variant-numeric: tabular-nums; }
+        .score-box .sub { font-size: 13px; color: #ffd966; font-variant-numeric: tabular-nums; }
+
+        #click-area { flex: 1; min-height: 260px; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; cursor: pointer; border-radius: 20px; background: rgba(255,255,255,0.02); border: 2px dashed rgba(120,200,255,0.15); transition: border-color 0.2s; }
+        #click-area:active { border-color: rgba(120,200,255,0.4); }
+
+        #core { --core-bg-1: #4a8ccc; --core-bg-2: #1a3a5c; --core-bg-3: #0a1020; --core-glow: rgba(120,200,255,0.3); --core-glow-2: rgba(120,200,255,0.1); --orbit-color: #d4e8ff; width: 140px; height: 140px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, var(--core-bg-1), var(--core-bg-2), var(--core-bg-3)); box-shadow: 0 0 40px var(--core-glow), 0 0 80px var(--core-glow-2); display: flex; justify-content: center; align-items: center; color: var(--orbit-color); transition: transform 0.06s, background 0.3s, box-shadow 0.3s; position: relative; animation: corePulse 2.5s ease-in-out infinite; }
+        @keyframes corePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+        #core:active { transform: scale(0.92); }
+        #core svg { display: block; }
+
+        #core .orbit-1 { transform-origin: 12px 12px; animation: orbitSpin1 12s linear infinite; }
+        #core .orbit-2 { transform-origin: 12px 12px; animation: orbitSpin2 16s linear infinite reverse; }
+        #core .orbit-3 { transform-origin: 12px 12px; animation: orbitSpin3 20s linear infinite; }
+        @keyframes orbitSpin1 { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes orbitSpin2 { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes orbitSpin3 { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        #core.crit .orbit-1, #core.crit .orbit-2, #core.crit .orbit-3 { animation-duration: 0.4s; }
+
+        #core .pulse { position: absolute; inset: -10px; border-radius: 50%; border: 2px solid var(--core-glow); animation: pulse 2s ease-out infinite; pointer-events: none; }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.4); opacity: 0; } }
+
+        .particle { position: absolute; width: 6px; height: 6px; border-radius: 50%; pointer-events: none; z-index: 10; }
+        @keyframes particleFly { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; } }
+
+        .float-text { position: absolute; font-weight: 700; font-size: 18px; color: #7ec8ff; pointer-events: none; animation: floatUp 0.8s ease-out forwards; z-index: 20; }
+        .float-text.crit { color: #ffd966; font-size: 24px; text-shadow: 0 0 12px rgba(255,215,102,0.8); }
+        @keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-60px); } }
+
+        .panel { background: rgba(255,255,255,0.04); border: 1px solid rgba(120,200,255,0.12); border-radius: 14px; padding: 12px; }
+        .panel-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.6; margin-bottom: 8px; }
+
+        .upgrade-btn { display: flex; justify-content: space-between; align-items: center; width: 100%; background: rgba(120,200,255,0.08); border: 1px solid rgba(120,200,255,0.2); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; color: #e0e0ff; font-size: 14px; cursor: pointer; transition: background 0.15s, transform 0.1s; gap: 10px; }
+        .upgrade-btn:not(:disabled):hover { background: rgba(120,200,255,0.14); }
+        .upgrade-btn:active { transform: scale(0.98); }
+        .upgrade-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+        .upgrade-btn.bought { animation: buyFlash 0.4s ease-out; }
+        @keyframes buyFlash { 0% { background: rgba(100,255,150,0.5); transform: scale(1.03); } 100% { background: rgba(120,200,255,0.08); transform: scale(1); } }
+        .upgrade-name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; text-align: left; }
+        .upgrade-name svg { color: #7ec8ff; flex-shrink: 0; }
+        .upgrade-name .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .upgrade-meta { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .upgrade-btn .owned { font-size: 11px; opacity: 0.5; }
+        .upgrade-btn .cost { font-size: 12px; color: #ffd966; font-variant-numeric: tabular-nums; }
+
+        .achievements-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; }
+        .ach { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 4px; text-align: center; font-size: 10px; opacity: 0.5; transition: opacity 0.3s, border-color 0.3s, background 0.3s; position: relative; }
+        .ach.unlocked { opacity: 1; border-color: rgba(255,215,102,0.4); background: rgba(255,215,102,0.08); }
+        .ach.unlocked .ach-icon { color: #ffd966; }
+        .ach-icon { display: inline-flex; justify-content: center; width: 24px; height: 24px; margin: 0 auto 4px; color: rgba(255,255,255,0.3); transition: color 0.3s; }
+        .ach-icon svg { display: block; }
+        .ach.just-unlocked { animation: achPop 0.6s ease-out; }
+        @keyframes achPop { 0% { transform: scale(1); box-shadow: 0 0 0 rgba(255,215,102,0); } 30% { transform: scale(1.15); box-shadow: 0 0 20px rgba(255,215,102,0.8); } 100% { transform: scale(1); box-shadow: 0 0 0 rgba(255,215,102,0); } }
+
+        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px); background: #1a1a2e; border: 1px solid #ffd966; border-radius: 12px; padding: 12px 20px; color: #ffd966; font-weight: 600; font-size: 14px; z-index: 100; transition: transform 0.3s ease; pointer-events: none; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
+        .toast svg { color: #ffd966; flex-shrink: 0; }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+
+        .prestige-btn { background: linear-gradient(135deg, #6a3de8, #9b5de5); border: none; border-radius: 12px; padding: 12px; color: white; font-weight: 700; font-size: 14px; cursor: pointer; width: 100%; display: none; align-items: center; justify-content: center; gap: 8px; transition: transform 0.1s, opacity 0.3s; }
+        .prestige-btn svg { flex-shrink: 0; }
+        .prestige-btn:active { transform: scale(0.98); }
+        .prestige-btn.visible { display: inline-flex; animation: prestigeGlow 1.8s ease-in-out infinite; }
+        @keyframes prestigeGlow { 0%, 100% { box-shadow: 0 0 10px rgba(155,93,229,0.4); } 50% { box-shadow: 0 0 25px rgba(155,93,229,0.9), 0 0 40px rgba(155,93,229,0.4); } }
+
+        .reward-btn { background: linear-gradient(135deg, #e8a33d, #d97706); border: none; border-radius: 12px; padding: 10px; color: white; font-weight: 700; font-size: 13px; cursor: pointer; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; transition: transform 0.1s, opacity 0.3s; }
+        .reward-btn:active { transform: scale(0.98); }
+        .reward-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .reward-btn svg { flex-shrink: 0; }
+
+        .skins-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        .skin-btn { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px; cursor: pointer; color: #e0e0ff; font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 6px; transition: border-color 0.2s, background 0.2s; }
+        .skin-btn:hover { border-color: rgba(120,200,255,0.4); }
+        .skin-btn.active { border-color: #7ec8ff; background: rgba(120,200,255,0.1); }
+        .skin-btn.owned { opacity: 0.8; }
+        .skin-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .skin-preview { width: 36px; height: 36px; border-radius: 50%; }
+        .skin-price { font-size: 11px; color: #ffd966; }
+        .skin-name { font-weight: 600; }
+
+        .quest-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px; gap: 8px; }
+        .quest-item:last-child { border-bottom: none; }
+        .quest-progress { font-size: 11px; opacity: 0.6; }
+        .quest-done { color: #7ec8ff; font-weight: 600; }
+
+        .friend-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 13px; gap: 8px; }
+        .friend-row .rank { opacity: 0.5; min-width: 20px; }
+        .friend-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .friend-row .score { color: #ffd966; font-variant-numeric: tabular-nums; }
+        .invite-btn { background: rgba(120,200,255,0.1); border: 1px solid rgba(120,200,255,0.3); border-radius: 10px; padding: 8px; color: #7ec8ff; font-size: 13px; cursor: pointer; width: 100%; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .invite-btn:active { transform: scale(0.98); }
+
+        .footer-note { font-size: 10px; opacity: 0.3; text-align: center; padding: 4px 0; }
+    </style>
+</head>
+<body>
+<div class="stars"></div>
+
+<div id="game">
+    <div class="header">
+        <div class="score-box">
+            <div class="label">Кванты</div>
+            <div class="value" id="quants">0</div>
+            <div class="sub" id="qps">0 Кв/с</div>
+        </div>
+        <div class="score-box" style="flex:0 0 auto;">
+            <div class="label">Престиж</div>
+            <div class="value" id="prestige-level" style="color:#c084fc;">0</div>
+            <div class="sub" id="dm">0 ТМ</div>
+        </div>
+    </div>
+
+    <div id="click-area">
+        <div id="core">
+            <div class="pulse"></div>
+            <svg width="76" height="76" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+                <ellipse class="orbit-1" cx="12" cy="12" rx="10" ry="4.5"/>
+                <ellipse class="orbit-2" cx="12" cy="12" rx="10" ry="4.5" transform="rotate(60 12 12)"/>
+                <ellipse class="orbit-3" cx="12" cy="12" rx="10" ry="4.5" transform="rotate(120 12 12)"/>
+            </svg>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-title">Улучшения</div>
+        <div id="upgrades"></div>
+        <button class="reward-btn" id="reward-btn"></button>
+    </div>
+
+    <div class="panel">
+        <div class="panel-title">Скины ядра</div>
+        <div class="skins-grid" id="skins"></div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-title">Ежедневные задания</div>
+        <div id="quests"></div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-title">Друзья</div>
+        <div id="friends"></div>
+        <button class="invite-btn" id="invite-btn"></button>
+    </div>
+
+    <div class="panel">
+        <div class="panel-title">Достижения</div>
+        <div class="achievements-grid" id="achievements"></div>
+    </div>
+
+    <button class="prestige-btn" id="prestige-btn"></button>
+
+    <div class="footer-note">Квантовая ферма · VK Games</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(async function() {
+    'use strict';
+
+    const SVG_PATHS = {
+        pointer: `<path d="M5 3l14 9-6 1 3 6-3 1-3-6-4 4z"/>`,
+        fist: `<path d="M6 10V7a2 2 0 014 0v3"/><path d="M10 10V5a2 2 0 014 0v5"/><path d="M14 10V6a2 2 0 014 0v7"/><path d="M5 12a4 4 0 004 4h6a4 4 0 004-4v-2H6v2z"/>`,
+        bolt: `<path d="M13 2L3 14h8l-1 8 10-12h-8z"/>`,
+        battery: `<rect x="3" y="8" width="16" height="10" rx="2"/><path d="M19 11v4M7 12v2M10 12v2"/>`,
+        gear: `<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>`,
+        rocket: `<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 00-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 012-3.95A12.88 12.88 0 0122 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 01-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>`,
+        vortex: `<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="1" fill="currentColor"/>`,
+        spark: `<path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/>`,
+        hash: `<path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/>`,
+        target: `<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>`,
+        layers: `<path d="M12 2l10 6-10 6L2 8z"/><path d="M2 14l10 6 10-6"/>`,
+        diamond: `<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M12 21L8 9l4-6 4 6-4 12"/>`,
+        trophy: `<path d="M6 3h12v7a6 6 0 01-12 0z"/><path d="M6 5H3v2a3 3 0 003 3M18 5h3v2a3 3 0 01-3 3"/><path d="M9 21h6M12 16v5"/>`,
+        cart: `<path d="M5 8h14l-1 13H6z"/><path d="M8 8V6a4 4 0 018 0v2"/>`,
+        zap: `<path d="M13 2L3 14h8l-1 8 10-12h-8z"/>`,
+        cloudBolt: `<path d="M6 16a4 4 0 010-8 6 6 0 0111.5-1.5A4 4 0 0118 16"/><path d="M13 12l-3 5h3l-1 4"/>`,
+        wind: `<path d="M3 6h14a3 3 0 100-3"/><path d="M3 10h17"/><path d="M3 14h12a3 3 0 110 6"/><path d="M3 18h7"/>`,
+        sparkles: `<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="2" fill="currentColor"/>`,
+        moon: `<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>`,
+        play: `<path d="M5 3l14 9-14 9z"/>`,
+        user: `<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>`,
+        link: `<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>`,
+    };
+
+    function icon(name, size = 18) {
+        const path = SVG_PATHS[name];
+        if (!path) return '';
+        return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+    }
+
+    const SAVE_KEY = 'quantum_farm_save_vk';
+    const LEADERBOARD_NAME = 'score'; // Для VK лидерборд настраивается в приложении
+
+    const state = {
+        quants: 0, totalQuants: 0, prestigeLevel: 0, darkMatter: 0,
+        clickPower: 1, qps: 0, upgrades: {}, achievements: {},
+        lastDailyBonus: null, lastSaveTime: Date.now(),
+        boostMultiplier: 1, boostEndTime: 0,
+        ownedSkins: ['classic'], activeSkin: 'classic',
+        questDate: null, quests: [], questProgress: {},
+    };
+
+    const SKINS = [
+        { id: 'classic', name: 'Классика', price: 0,   bg1: '#4a8ccc', bg2: '#1a3a5c', bg3: '#0a1020', glow: 'rgba(120,200,255,0.3)', glow2: 'rgba(120,200,255,0.1)', orbit: '#d4e8ff' },
+        { id: 'plasma',  name: 'Плазма',   price: 10,  bg1: '#d946ef', bg2: '#7c3aed', bg3: '#1a0a2e', glow: 'rgba(217,70,239,0.4)',  glow2: 'rgba(217,70,239,0.15)', orbit: '#f5d0fe' },
+        { id: 'gold',    name: 'Золото',   price: 25,  bg1: '#fbbf24', bg2: '#b45309', bg3: '#1a0f00', glow: 'rgba(251,191,36,0.4)',  glow2: 'rgba(251,191,36,0.15)', orbit: '#fef3c7' },
+        { id: 'emerald', name: 'Изумруд',  price: 50,  bg1: '#34d399', bg2: '#047857', bg3: '#001a0f', glow: 'rgba(52,211,153,0.4)',  glow2: 'rgba(52,211,153,0.15)', orbit: '#d1fae5' },
+        { id: 'void',    name: 'Бездна',   price: 100, bg1: '#1e1b4b', bg2: '#0f0a1e', bg3: '#000000', glow: 'rgba(139,92,246,0.5)',  glow2: 'rgba(139,92,246,0.2)',  orbit: '#c4b5fd' },
+    ];
+
+    const QUEST_POOL = [
+        { id: 'clicks_50',  name: 'Сделай 50 кликов',         type: 'clicks',  target: 50,    rewardMult: 30 },
+        { id: 'buys_3',     name: 'Купи 3 апгрейда',          type: 'buys',    target: 3,     rewardMult: 50 },
+        { id: 'earn_10k',   name: 'Заработай 10 000 квантов', type: 'earn',    target: 10000, rewardMult: 20 },
+        { id: 'prestige_1', name: 'Соверши 1 престиж',        type: 'prestige', target: 1,    rewardMult: 200 },
+    ];
+
+    const UPGRADES = [
+        { id: 'click1', name: 'Усилитель клика I',   baseCost: 10,    effect: 'click', value: 1,   icon: 'pointer'  },
+        { id: 'click2', name: 'Усилитель клика II',  baseCost: 120,   effect: 'click', value: 3,   icon: 'fist'     },
+        { id: 'click3', name: 'Квантовая перчатка',  baseCost: 1500,  effect: 'click', value: 10,  icon: 'bolt'     },
+        { id: 'auto1',  name: 'Мини-реактор',        baseCost: 50,    effect: 'qps',   value: 1,   icon: 'battery'  },
+        { id: 'auto2',  name: 'Стабилизатор',        baseCost: 400,   effect: 'qps',   value: 5,   icon: 'gear'     },
+        { id: 'auto3',  name: 'Плазменный ускоритель', baseCost: 3000, effect: 'qps',  value: 20,  icon: 'rocket'   },
+        { id: 'auto4',  name: 'Сингулярный генератор', baseCost: 20000, effect: 'qps', value: 100, icon: 'vortex'   },
+    ];
+
+    const ACHIEVEMENTS = [
+        { id: 'first_click', icon: 'spark',     name: 'Первый квант',     condition: s => s.totalQuants >= 1 },
+        { id: 'click_100',   icon: 'hash',      name: '100 квантов',      condition: s => s.totalQuants >= 100 },
+        { id: 'click_1000',  icon: 'target',    name: '1 000 квантов',    condition: s => s.totalQuants >= 1000 },
+        { id: 'click_10000', icon: 'layers',    name: '10 000 квантов',   condition: s => s.totalQuants >= 10000 },
+        { id: 'click_100k',  icon: 'diamond',   name: '100 000 квантов',  condition: s => s.totalQuants >= 100000 },
+        { id: 'click_1m',    icon: 'trophy',    name: '1 000 000',        condition: s => s.totalQuants >= 1e6 },
+        { id: 'first_upg',   icon: 'cart',      name: 'Первый апгрейд',   condition: s => Object.values(s.upgrades).some(v => v > 0) },
+        { id: 'qps_10',      icon: 'zap',       name: '10 Кв/с',          condition: s => s.qps >= 10 },
+        { id: 'qps_100',     icon: 'cloudBolt', name: '100 Кв/с',         condition: s => s.qps >= 100 },
+        { id: 'qps_1000',    icon: 'wind',      name: '1 000 Кв/с',       condition: s => s.qps >= 1000 },
+        { id: 'first_pres',  icon: 'sparkles',  name: 'Первый престиж',   condition: s => s.prestigeLevel >= 1 },
+        { id: 'dm_100',      icon: 'moon',      name: '100 тёмной материи', condition: s => s.darkMatter >= 100 },
+    ];
+
+    const el = {
+        quants: document.getElementById('quants'),
+        qps: document.getElementById('qps'),
+        prestigeLevel: document.getElementById('prestige-level'),
+        dm: document.getElementById('dm'),
+        clickArea: document.getElementById('click-area'),
+        core: document.getElementById('core'),
+        upgrades: document.getElementById('upgrades'),
+        achievements: document.getElementById('achievements'),
+        prestigeBtn: document.getElementById('prestige-btn'),
+        rewardBtn: document.getElementById('reward-btn'),
+        toast: document.getElementById('toast'),
+        skins: document.getElementById('skins'),
+        quests: document.getElementById('quests'),
+        friends: document.getElementById('friends'),
+        inviteBtn: document.getElementById('invite-btn'),
+    };
+
+    function formatNumber(n) {
+        if (n >= 1e12) return (n / 1e12).toFixed(2) + 'T';
+        if (n >= 1e9)  return (n / 1e9).toFixed(2)  + 'B';
+        if (n >= 1e6)  return (n / 1e6).toFixed(2)  + 'M';
+        if (n >= 1e3)  return (n / 1e3).toFixed(2)  + 'K';
+        return Math.floor(n).toString();
+    }
+
+    function toast(message, iconName = null) {
+        el.toast.innerHTML = (iconName ? icon(iconName, 18) : '') + '<span>' + message + '</span>';
+        el.toast.classList.add('show');
+        clearTimeout(el.toast._timer);
+        el.toast._timer = setTimeout(() => el.toast.classList.remove('show'), 2500);
+    }
+
+    let audioCtx = null;
+    function playSound(freq = 600, duration = 0.08, type = 'sine') {
+        try {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type; osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + duration);
+        } catch (e) {}
+    }
+
+    function spawnParticles(x, y, count = 6, color = '#7ec8ff') {
+        const area = el.clickArea;
+        for (let i = 0; i < count; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.style.left = x + 'px'; p.style.top = y + 'px';
+            p.style.background = color; p.style.boxShadow = `0 0 6px ${color}`;
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 30 + Math.random() * 50;
+            p.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
+            p.style.setProperty('--dy', Math.sin(angle) * dist + 'px');
+            p.style.animation = `particleFly ${0.5 + Math.random() * 0.3}s ease-out forwards`;
+            area.appendChild(p);
+            setTimeout(() => p.remove(), 800);
+        }
+    }
+
+    function spawnParticlesAtElement(elem, color, count = 6) {
+        const rect = elem.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        for (let i = 0; i < count; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.style.left = cx + 'px'; p.style.top = cy + 'px';
+            p.style.background = color; p.style.boxShadow = `0 0 8px ${color}`;
+            p.style.position = 'fixed';
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 40 + Math.random() * 60;
+            p.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
+            p.style.setProperty('--dy', Math.sin(angle) * dist + 'px');
+            p.style.animation = `particleFly ${0.6 + Math.random() * 0.3}s ease-out forwards`;
+            document.body.appendChild(p);
+            setTimeout(() => p.remove(), 1000);
+        }
+    }
+
+    // ============================================================
+    //  VK BRIDGE ИНТЕГРАЦИЯ
+    // ============================================================
+    let vkReady = false;
+
+    async function initVK() {
+        try {
+            if (typeof vkBridge === 'undefined') {
+                console.warn('[VK] VK Bridge не найден — локальный режим');
+                return;
+            }
+            // Инициализация обязательна для работы[reference:1]
+            await vkBridge.send('VKWebAppInit');
+            vkReady = true;
+            console.log('[VK] VK Bridge готов');
+        } catch (e) {
+            console.warn('[VK] Ошибка инициализации:', e);
+        }
+    }
+
+    async function saveGame() {
+        state.lastSaveTime = Date.now();
+        const data = JSON.stringify(state);
+        // Сохраняем локально как резерв
+        try { localStorage.setItem(SAVE_KEY, data); } catch (e) {}
+
+        if (vkReady) {
+            try {
+                // VK Storage имеет ограничение на размер значения (4096 символов)[reference:2]
+                // Если состояние слишком большое, сохраняем только критичные поля
+                let saveString = data;
+                if (saveString.length > 4000) {
+                    const slimState = {
+                        quants: state.quants, totalQuants: state.totalQuants,
+                        prestigeLevel: state.prestigeLevel, darkMatter: state.darkMatter,
+                        upgrades: state.upgrades, achievements: state.achievements,
+                        ownedSkins: state.ownedSkins, activeSkin: state.activeSkin,
+                        lastDailyBonus: state.lastDailyBonus, lastSaveTime: state.lastSaveTime,
+                    };
+                    saveString = JSON.stringify(slimState);
+                    console.warn('[VK] Состояние обрезано для VK Storage');
+                }
+                await vkBridge.send('VKWebAppStorageSet', { key: SAVE_KEY, value: saveString });
+                console.log('[VK] Сохранено в VK Storage');
+            } catch (e) {
+                console.warn('[VK] Ошибка сохранения:', e);
+            }
+        }
+    }
+
+    async function loadGame() {
+        let loaded = null;
+
+        if (vkReady) {
+            try {
+                const result = await vkBridge.send('VKWebAppStorageGet', { keys: [SAVE_KEY] });
+                if (result.keys && result.keys[0] && result.keys[0].value) {
+                    loaded = JSON.parse(result.keys[0].value);
+                    console.log('[VK] Загружено из VK Storage');
+                }
+            } catch (e) {
+                console.warn('[VK] Ошибка загрузки из VK:', e);
+            }
+        }
+
+        if (!loaded) {
+            try {
+                const raw = localStorage.getItem(SAVE_KEY);
+                if (raw) { loaded = JSON.parse(raw); console.log('[Local] Загружено из localStorage'); }
+            } catch (e) {}
+        }
+
+        if (loaded) {
+            Object.assign(state, loaded);
+            const elapsed = Math.min((Date.now() - (state.lastSaveTime || Date.now())) / 1000, 7200);
+            if (elapsed > 10 && state.qps > 0) {
+                const offline = Math.floor(state.qps * elapsed * 0.5);
+                state.quants += offline; state.totalQuants += offline;
+            }
+        }
+    }
+
+    function updateRewardButton() {
+        if (state.boostEndTime > Date.now()) {
+            const left = Math.ceil((state.boostEndTime - Date.now()) / 1000);
+            el.rewardBtn.innerHTML = icon('bolt', 16) + `<span>×2 буст: ${left} сек</span>`;
+            el.rewardBtn.disabled = true;
+        } else {
+            el.rewardBtn.innerHTML = icon('play', 16) + `<span>Смотреть рекламу за ×2 кванта (30 сек)</span>`;
+            el.rewardBtn.disabled = false;
+        }
+    }
+
+    async function showRewardedAd() {
+        if (state.boostEndTime > Date.now()) return;
+        if (!vkReady) {
+            applyBoost();
+            return;
+        }
+        try {
+            // Запрос rewarded-рекламы в VK[reference:3]
+            const result = await vkBridge.send('VKWebAppShowNativeAds', { ad_format: 'reward' });
+            if (result.result) {
+                applyBoost();
+            } else {
+                toast('Реклама не была показана', 'play');
+            }
+        } catch (e) {
+            console.warn('[VK] Ошибка рекламы:', e);
+            toast('Не удалось загрузить рекламу', 'play');
+        }
+    }
+
+    function applyBoost() {
+        state.boostMultiplier = 2;
+        state.boostEndTime = Date.now() + 30000;
+        toast('Буст ×2 активирован на 30 секунд!', 'bolt');
+        playSound(1200, 0.2, 'square');
+        updateRewardButton();
+        saveGame();
+    }
+
+    function applySkin(skinId) {
+        const skin = SKINS.find(s => s.id === skinId);
+        if (!skin) return;
+        el.core.style.setProperty('--core-bg-1', skin.bg1);
+        el.core.style.setProperty('--core-bg-2', skin.bg2);
+        el.core.style.setProperty('--core-bg-3', skin.bg3);
+        el.core.style.setProperty('--core-glow', skin.glow);
+        el.core.style.setProperty('--core-glow-2', skin.glow2);
+        el.core.style.setProperty('--orbit-color', skin.orbit);
+    }
+
+    function renderSkins() {
+        el.skins.innerHTML = '';
+        for (const skin of SKINS) {
+            const owned = state.ownedSkins.includes(skin.id);
+            const active = state.activeSkin === skin.id;
+            const btn = document.createElement('button');
+            btn.className = 'skin-btn' + (active ? ' active' : '') + (owned ? ' owned' : '');
+            btn.disabled = !owned && state.darkMatter < skin.price;
+            btn.innerHTML = `
+                <div class="skin-preview" style="background: radial-gradient(circle at 35% 35%, ${skin.bg1}, ${skin.bg2}, ${skin.bg3}); box-shadow: 0 0 12px ${skin.glow};"></div>
+                <span class="skin-name">${skin.name}</span>
+                <span class="skin-price">${owned ? (active ? 'Активен' : 'Выбрать') : skin.price + ' ТМ'}</span>
+            `;
+            btn.addEventListener('click', () => {
+                if (owned) {
+                    state.activeSkin = skin.id;
+                    applySkin(skin.id);
+                    renderSkins();
+                    saveGame();
+                    playSound(600, 0.1, 'triangle');
+                } else if (state.darkMatter >= skin.price) {
+                    state.darkMatter -= skin.price;
+                    state.ownedSkins.push(skin.id);
+                    state.activeSkin = skin.id;
+                    applySkin(skin.id);
+                    renderSkins();
+                    renderStats();
+                    saveGame();
+                    toast(`Скин «${skin.name}» разблокирован!`, 'sparkles');
+                    playSound(880, 0.2, 'triangle');
+                }
+            });
+            el.skins.appendChild(btn);
+        }
+    }
+
+    function getServerDateKey() {
+        // В VK можно использовать локальное время, но для заданий лучше UTC
+        const now = Date.now();
+        return new Date(now).toISOString().slice(0, 10);
+    }
+
+    function generateDailyQuests() {
+        const today = getServerDateKey();
+        if (state.questDate === today && state.quests.length > 0) return;
+        const shuffled = [...QUEST_POOL].sort(() => Math.random() - 0.5);
+        state.quests = shuffled.slice(0, 3).map(q => ({ ...q, completed: false, claimed: false }));
+        state.questProgress = {};
+        state.questDate = today;
+        console.log('[Задания] Сгенерированы на', today);
+    }
+
+    let _lastQuestHash = '';
+    function renderQuests() {
+        const hash = JSON.stringify(state.quests) + JSON.stringify(state.questProgress);
+        if (hash === _lastQuestHash) return;
+        _lastQuestHash = hash;
+
+        el.quests.innerHTML = '';
+        for (const quest of state.quests) {
+            const progress = state.questProgress[quest.id] || 0;
+            const done = progress >= quest.target;
+            const div = document.createElement('div');
+            div.className = 'quest-item';
+            const reward = Math.floor(quest.rewardMult * Math.max(10, state.qps));
+            div.innerHTML = `
+                <div>
+                    <div>${quest.name}</div>
+                    <div class="quest-progress">${Math.min(Math.floor(progress), quest.target)} / ${quest.target}${done ? ' ✓' : ''}</div>
+                </div>
+                <div class="${done ? 'quest-done' : ''}">${done ? '+' + formatNumber(reward) + ' Кв' : '⏳'}</div>
+            `;
+            el.quests.appendChild(div);
+        }
+        if (state.quests.length > 0 && state.quests.every(q => q.completed)) {
+            const div = document.createElement('div');
+            div.style.cssText = 'text-align:center;opacity:0.5;font-size:12px;padding:8px 0;';
+            div.textContent = 'Все задания на сегодня выполнены!';
+            el.quests.appendChild(div);
+        }
+    }
+
+    function progressQuest(type, amount = 1) {
+        let changed = false;
+        for (const quest of state.quests) {
+            if (quest.completed || quest.type !== type) continue;
+            state.questProgress[quest.id] = (state.questProgress[quest.id] || 0) + amount;
+            if (state.questProgress[quest.id] >= quest.target) {
+                quest.completed = true;
+                const reward = Math.floor(quest.rewardMult * Math.max(10, state.qps));
+                state.quants += reward;
+                state.totalQuants += reward;
+                quest.claimed = true;
+                toast(`Задание выполнено: ${quest.name}! +${formatNumber(reward)} квантов`, 'target');
+                playSound(1000, 0.15, 'triangle');
+                changed = true;
+            }
+        }
+        if (changed) { renderQuests(); renderStats(); saveGame(); }
+    }
+
+    async function renderFriends() {
+        el.friends.innerHTML = '';
+        if (!vkReady) {
+            el.friends.innerHTML = '<div style="opacity:0.5;font-size:12px;text-align:center;padding:8px 0;">Войдите через VK, чтобы видеть друзей</div>';
+            return;
+        }
+        // В VK для полноценного лидерборда нужен серверный метод secure.addAppEvent.
+        // На клиенте мы можем только открыть нативное окно лидерборда.
+        el.friends.innerHTML = '<div style="opacity:0.5;font-size:12px;text-align:center;padding:8px 0;">Нажмите «Пригласить друга», чтобы открыть таблицу лидеров VK</div>';
+    }
+
+    async function inviteFriend() {
+        if (vkReady) {
+            try {
+                // Открываем окно таблицы лидеров VK (работает на мобильных платформах)
+                await vkBridge.send('VKWebAppShowLeaderBoardBox', { user_result: Math.floor(state.totalQuants) });
+                return;
+            } catch (e) {
+                console.warn('[VK] Лидерборд недоступен:', e);
+            }
+        }
+        // Fallback: копируем ссылку на игру
+        const gameUrl = 'https://vk.com/appYOUR_APP_ID'; // Замени на ID приложения VK
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(gameUrl);
+                toast('Ссылка на игру скопирована!', 'link');
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = gameUrl;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                ta.remove();
+                toast('Ссылка на игру скопирована!', 'link');
+            }
+        } catch (e) {
+            toast('Не удалось скопировать ссылку', 'link');
+        }
+    }
+
+    function checkAchievements() {
+        let changed = false;
+        for (const ach of ACHIEVEMENTS) {
+            if (!state.achievements[ach.id] && ach.condition(state)) {
+                state.achievements[ach.id] = true;
+                changed = true;
+                toast('Достижение: ' + ach.name, ach.icon);
+                playSound(880, 0.15, 'triangle');
+                setTimeout(() => {
+                    const grid = el.achievements;
+                    if (grid) {
+                        const idx = ACHIEVEMENTS.findIndex(a => a.id === ach.id);
+                        const achEl = grid.children[idx];
+                        if (achEl) {
+                            achEl.classList.add('just-unlocked');
+                            spawnParticlesAtElement(achEl, '#ffd966', 10);
+                            setTimeout(() => achEl.classList.remove('just-unlocked'), 700);
+                        }
+                    }
+                }, 50);
+            }
+        }
+        if (changed) renderAchievements();
+    }
+
+    function renderUpgrades() {
+        el.upgrades.innerHTML = '';
+        for (const up of UPGRADES) {
+            const count = state.upgrades[up.id] || 0;
+            const cost = Math.floor(up.baseCost * Math.pow(1.15, count));
+            const btn = document.createElement('button');
+            btn.className = 'upgrade-btn';
+            btn.dataset.upgradeId = up.id;
+            btn.disabled = state.quants < cost;
+            btn.innerHTML = `
+                <span class="upgrade-name">${icon(up.icon, 18)}<span class="label">${up.name}</span></span>
+                <span class="upgrade-meta"><span class="owned">×${count}</span><span class="cost">${formatNumber(cost)}</span></span>
+            `;
+            btn.addEventListener('click', () => buyUpgrade(up.id));
+            el.upgrades.appendChild(btn);
+        }
+    }
+
+    function renderAchievements() {
+        el.achievements.innerHTML = '';
+        for (const ach of ACHIEVEMENTS) {
+            const div = document.createElement('div');
+            div.className = 'ach' + (state.achievements[ach.id] ? ' unlocked' : '');
+            div.dataset.achId = ach.id;
+            div.innerHTML = `<span class="ach-icon">${icon(ach.icon, 22)}</span><span class="ach-name">${ach.name}</span>`;
+            el.achievements.appendChild(div);
+        }
+    }
+
+    function renderStats() {
+        el.quants.textContent = formatNumber(state.quants);
+        el.qps.textContent = formatNumber(state.qps) + ' Кв/с';
+        el.prestigeLevel.textContent = state.prestigeLevel;
+        el.dm.textContent = formatNumber(state.darkMatter) + ' ТМ';
+    }
+
+    function updatePrestigeButton() {
+        const threshold = 1e5 * Math.pow(10, state.prestigeLevel);
+        if (state.totalQuants >= threshold) {
+            const gain = Math.floor(Math.sqrt(state.totalQuants / 1e4));
+            el.prestigeBtn.innerHTML = icon('sparkles', 18) + `<span>Престиж: +${gain} тёмной материи</span>`;
+            el.prestigeBtn.classList.add('visible');
+        } else {
+            el.prestigeBtn.classList.remove('visible');
+        }
+    }
+
+    function renderAll() {
+        renderStats();
+        renderUpgrades();
+        renderAchievements();
+        renderSkins();
+        renderQuests();
+        updatePrestigeButton();
+        updateRewardButton();
+    }
+
+    function getBoostActive() { return state.boostEndTime > Date.now() ? state.boostMultiplier : 1; }
+
+    function getClickPower() {
+        let power = 1;
+        for (const up of UPGRADES) {
+            if (up.effect === 'click') power += (state.upgrades[up.id] || 0) * up.value;
+        }
+        power *= (1 + state.prestigeLevel * 0.1);
+        power *= getBoostActive();
+        return power;
+    }
+
+    function recalcQPS() {
+        let qps = 0;
+        for (const up of UPGRADES) {
+            if (up.effect === 'qps') qps += (state.upgrades[up.id] || 0) * up.value;
+        }
+        qps *= (1 + state.prestigeLevel * 0.2);
+        state.qps = qps;
+    }
+
+    function handleClick(e) {
+        const power = getClickPower();
+        const isCrit = Math.random() < 0.1;
+        const amount = isCrit ? power * 10 : power;
+
+        state.quants += amount;
+        state.totalQuants += amount;
+        progressQuest('clicks', 1);
+        progressQuest('earn', amount);
+
+        spawnFloatText(e, '+' + formatNumber(amount) + (isCrit ? '!' : ''), isCrit);
+        playSound(isCrit ? 1200 : 600, isCrit ? 0.15 : 0.06, isCrit ? 'square' : 'sine');
+
+        const rect = el.clickArea.getBoundingClientRect();
+        const cx = (e.clientX || rect.left + rect.width / 2) - rect.left;
+        const cy = (e.clientY || rect.top + rect.height / 2) - rect.top;
+        spawnParticles(cx, cy, isCrit ? 12 : 6, isCrit ? '#ffd966' : '#7ec8ff');
+
+        if (isCrit) {
+            el.core.classList.add('crit');
+            setTimeout(() => el.core.classList.remove('crit'), 350);
+        }
+
+        checkAchievements();
+        renderStats();
+        renderUpgrades();
+        updatePrestigeButton();
+    }
+
+    function spawnFloatText(e, text, isCrit) {
+        const rect = el.clickArea.getBoundingClientRect();
+        const x = (e.clientX || rect.left + rect.width / 2) - rect.left;
+        const y = (e.clientY || rect.top + rect.height / 2) - rect.top;
+        const div = document.createElement('div');
+        div.className = 'float-text' + (isCrit ? ' crit' : '');
+        div.textContent = text;
+        div.style.left = x + 'px'; div.style.top = y + 'px';
+        el.clickArea.appendChild(div);
+        setTimeout(() => div.remove(), 800);
+    }
+
+    function buyUpgrade(id) {
+        const up = UPGRADES.find(u => u.id === id);
+        if (!up) return;
+        const count = state.upgrades[id] || 0;
+        const cost = Math.floor(up.baseCost * Math.pow(1.15, count));
+        if (state.quants < cost) return;
+
+        state.quants -= cost;
+        state.upgrades[id] = count + 1;
+        recalcQPS();
+        progressQuest('buys', 1);
+        checkAchievements();
+        renderAll();
+        playSound(440, 0.1, 'triangle');
+
+        const btn = el.upgrades.querySelector(`[data-upgrade-id="${id}"]`);
+        if (btn) { btn.classList.add('bought'); setTimeout(() => btn.classList.remove('bought'), 450); }
+
+        saveGame();
+    }
+
+    function doPrestige() {
+        const threshold = 1e5 * Math.pow(10, state.prestigeLevel);
+        if (state.totalQuants < threshold) return;
+        const gain = Math.floor(Math.sqrt(state.totalQuants / 1e4));
+        if (gain <= 0) return;
+
+        state.quants = 0; state.totalQuants = 0; state.qps = 0;
+        state.upgrades = {}; state.prestigeLevel += 1; state.darkMatter += gain;
+
+        progressQuest('prestige', 1);
+        checkAchievements(); renderAll();
+        toast(`Престиж ${state.prestigeLevel}! +${gain} тёмной материи`, 'sparkles');
+        playSound(200, 0.5, 'sawtooth');
+        saveGame();
+    }
+
+    function checkDailyBonus() {
+        const today = getServerDateKey();
+        if (state.lastDailyBonus === today) return;
+        const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+        const isStreak = state.lastDailyBonus === yesterday;
+        const baseBonus = Math.max(50, state.qps * 60);
+        const bonus = isStreak ? baseBonus * 2 : baseBonus;
+        state.quants += bonus; state.totalQuants += bonus; state.lastDailyBonus = today;
+        setTimeout(() => {
+            toast(`Ежедневный бонус: +${formatNumber(bonus)}${isStreak ? ' (серия!)' : ''}`, 'spark');
+            playSound(1000, 0.2, 'sine');
+            renderStats(); saveGame();
+        }, 1200);
+    }
+
+    function gameLoop() {
+        if (state.qps > 0) {
+            const perTick = state.qps / 10 * getBoostActive();
+            state.quants += perTick;
+            state.totalQuants += perTick;
+            progressQuest('earn', perTick);
+            renderStats(); updatePrestigeButton(); checkAchievements();
+        }
+        if (!gameLoop._lastBoostUpdate || Date.now() - gameLoop._lastBoostUpdate > 1000) {
+            gameLoop._lastBoostUpdate = Date.now();
+            updateRewardButton();
+            renderQuests();
+            if (state.boostEndTime && state.boostEndTime <= Date.now()) {
+                state.boostMultiplier = 1; state.boostEndTime = 0;
+            }
+        }
+        requestAnimationFrame(gameLoop);
+    }
+
+    async function init() {
+        await initVK();
+        await loadGame();
+        recalcQPS();
+        checkDailyBonus();
+        generateDailyQuests();
+        applySkin(state.activeSkin);
+        renderAll();
+        renderFriends();
+
+        el.clickArea.addEventListener('click', handleClick);
+        el.prestigeBtn.addEventListener('click', doPrestige);
+        el.rewardBtn.addEventListener('click', showRewardedAd);
+        el.inviteBtn.innerHTML = icon('user', 16) + '<span>Пригласить друга</span>';
+        el.inviteBtn.addEventListener('click', inviteFriend);
+
+        setInterval(saveGame, 15000);
+        window.addEventListener('beforeunload', saveGame);
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) saveGame();
+            if (audioCtx) { if (document.hidden) audioCtx.suspend(); else audioCtx.resume(); }
+        });
+
+        gameLoop();
+        console.log('[Игра] Квантовая ферма запущена (VK Edition)');
+    }
+
+    init().catch(err => {
+        console.error('[Игра] Критическая ошибка:', err);
+        renderAll();
+        el.clickArea.addEventListener('click', handleClick);
+    });
+})();
+</script>
+</body>
+</html>
